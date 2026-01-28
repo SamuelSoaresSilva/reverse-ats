@@ -1,5 +1,15 @@
+import re
+from google import genai
 
+# =========================
+# CONFIGURAÇÃO GEMINI
+# =========================
 
+GEMINI_API_KEY = "YOUR_API_KEY"
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+
+# =========================
 # FUNÇÃO AUXILIAR
 # =========================
 
