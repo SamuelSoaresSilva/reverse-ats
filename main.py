@@ -70,6 +70,7 @@ Analise as informações abaixo e gere conteúdos profissionais, claros e objeti
 
 
 IMPORTANTE:
+- Evite linguagem padrão de IAs, como traços e palavras reutilzadas.
 - Não inventar e não retornar: experiencias profissionais, formação acadêmica, idiomas.
 - Não responder em markdown.
 - Nenhuma seção pode ficar vazia.
