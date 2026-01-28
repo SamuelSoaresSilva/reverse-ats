@@ -1,11 +1,14 @@
 import re
+import tkinter as tk
+from tkinter.scrolledtext import ScrolledText
+from tkinter import messagebox
 from google import genai
 
 # =========================
 # CONFIGURAÇÃO GEMINI
 # =========================
 
-GEMINI_API_KEY = "YOUR_API_KEY"
+GEMINI_API_KEY = "SUA_API_KEY_AQUI"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -13,14 +16,12 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 # FUNÇÃO AUXILIAR
 # =========================
 
-
 def extrair_texto(response):
     """
     Extrai texto do response do google.genai de forma robusta.
     """
     if hasattr(response, "text") and response.text:
         return response.text.strip()
-
 
     textos = []
     if hasattr(response, "candidates"):
@@ -31,14 +32,11 @@ def extrair_texto(response):
                     if hasattr(part, "text") and part.text:
                         textos.append(part.text)
 
-
     return "\n".join(textos).strip()
-
 
 # =========================
 # FUNÇÃO PRINCIPAL
 # =========================
-
 
 def gerar_material(curriculo, contexto, descricao_vaga):
     # -------------------------
@@ -50,24 +48,20 @@ def gerar_material(curriculo, contexto, descricao_vaga):
             return fallback
         return texto
 
-
     curriculo = normalizar(
         curriculo,
         "Profissional de TI com experiência em desenvolvimento de software, atuação em projetos variados e foco em boas práticas."
     )
-
 
     contexto = normalizar(
         contexto,
         "Profissional em busca de oportunidades alinhadas ao seu perfil técnico e crescimento profissional."
     )
 
-
     descricao_vaga = normalizar(
         descricao_vaga,
         "Vaga na área de tecnologia da informação com foco em desenvolvimento, manutenção de sistemas e colaboração em equipe."
     )
-
 
     # -------------------------
     # PROMPT
@@ -75,9 +69,7 @@ def gerar_material(curriculo, contexto, descricao_vaga):
     prompt = f"""
 Você é um especialista em recrutamento, RH estratégico e copywriting profissional, com ampla experiência em análise de currículos e adequação a vagas de tecnologia.
 
-
 Analise as informações abaixo e gere conteúdos profissionais, claros e objetivos.
-
 
 IMPORTANTE:
 - Evite linguagem padrão de IAs, como traços e palavras reutilzadas.
@@ -88,47 +80,36 @@ IMPORTANTE:
 - Não explique o processo.
 - Retorne APENAS no formato solicitado.
 
-
 CURRÍCULO DO CANDIDATO:
 {curriculo}
-
 
 CONTEXTO PROFISSIONAL:
 {contexto}
 
-
 DESCRIÇÃO DA VAGA:
 {descricao_vaga}
 
-
 FORMATO DE RESPOSTA OBRIGATÓRIO:
-
 
 --- PRETENSÃO SALARIAL ---
 (informe uma pretensão salarial compatível com o perfil e a vaga)
 
-
 --- CURRÍCULO ADAPTADO ---
 (currículo completo adaptado à vaga)
-
 
 --- POR QUE ME ESCOLHER PARA A VAGA ---
 (texto persuasivo e profissional)
 """
-
 
     response = client.models.generate_content(
         model="gemini-3-flash-preview",
         contents=prompt,
     )
 
-
     texto_resposta = extrair_texto(response)
-
 
     if not texto_resposta:
         raise RuntimeError("Resposta vazia do Gemini após extração.")
-
 
     # -------------------------
     # EXTRAÇÃO DAS SEÇÕES
@@ -140,7 +121,6 @@ FORMATO DE RESPOSTA OBRIGATÓRIO:
             raise RuntimeError(f"Seção '{titulo}' não retornada corretamente.")
         return match.group(1).strip()
 
-
     return {
         "pretensao_salarial": extrair_secao("PRETENSÃO SALARIAL"),
         "curriculo_adaptado": extrair_secao("CURRÍCULO ADAPTADO"),
@@ -148,28 +128,60 @@ FORMATO DE RESPOSTA OBRIGATÓRIO:
         "texto_completo": texto_resposta
     }
 
+# =========================
+# INTERFACE GRÁFICA
+# =========================
+
+def abrir_interface():
+    def gerar():
+        try:
+            curriculo = txt_curriculo.get("1.0", tk.END)
+            contexto = txt_contexto.get("1.0", tk.END)
+            descricao = txt_descricao.get("1.0", tk.END)
+
+            resultado = gerar_material(curriculo, contexto, descricao)
+
+            txt_saida.delete("1.0", tk.END)
+            txt_saida.insert(tk.END, resultado["texto_completo"])
+
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+
+    root = tk.Tk()
+    root.title("Gerador de Material Profissional")
+    root.geometry("900x800")
+
+    tk.Label(root, text="Currículo", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+    txt_curriculo = ScrolledText(root, height=8)
+    txt_curriculo.pack(fill="both", padx=10, pady=5)
+
+    tk.Label(root, text="Contexto Profissional", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+    txt_contexto = ScrolledText(root, height=5)
+    txt_contexto.pack(fill="both", padx=10, pady=5)
+
+    tk.Label(root, text="Descrição da Vaga", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+    txt_descricao = ScrolledText(root, height=6)
+    txt_descricao.pack(fill="both", padx=10, pady=5)
+
+    tk.Button(
+        root,
+        text="Gerar Material",
+        command=gerar,
+        bg="#2b7cff",
+        fg="white",
+        font=("Arial", 10, "bold"),
+        height=2
+    ).pack(pady=10)
+
+    tk.Label(root, text="Resultado", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
+    txt_saida = ScrolledText(root, height=15)
+    txt_saida.pack(fill="both", expand=True, padx=10, pady=5)
+
+    root.mainloop()
 
 # =========================
-# EXEMPLO DE USO
+# MAIN
 # =========================
-
 
 if __name__ == "__main__":
-    curriculo = """ """ 
-    contexto = """ """
-    descricao_vaga = """ """
-
-
-    resultado = gerar_material(curriculo, contexto, descricao_vaga)
-
-
-    print("\n--- PRETENSÃO SALARIAL ---\n")
-    print(resultado["pretensao_salarial"])
-
-
-    print("\n--- CURRÍCULO ADAPTADO ---\n")
-    print(resultado["curriculo_adaptado"])
-
-
-    print("\n--- POR QUE ME ESCOLHER PARA A VAGA ---\n")
-    print(resultado["porque_escolher"])
+    abrir_interface()
