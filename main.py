@@ -1,28 +1,34 @@
 import re
+import os
+import threading
 import tkinter as tk
-from tkinter.scrolledtext import ScrolledText
-from tkinter import messagebox
+from tkinter import messagebox, scrolledtext
 from google import genai
+from dotenv import load_dotenv
 
 # =========================
-# CONFIGURAÇÃO GEMINI
+# CONFIGURAÇÃO E AMBIENTE
 # =========================
 
-GEMINI_API_KEY = "SUA_API_KEY_AQUI"
+# Carrega as variáveis do arquivo .env
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+if not GEMINI_API_KEY:
+    print("Erro: GEMINI_API_KEY não encontrada no arquivo .env")
+
+# Inicializa o cliente Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 # =========================
-# FUNÇÃO AUXILIAR
+# LÓGICA DE PROCESSAMENTO
 # =========================
 
 def extrair_texto(response):
-    """
-    Extrai texto do response do google.genai de forma robusta.
-    """
+    """Extrai texto do response do google.genai de forma robusta."""
     if hasattr(response, "text") and response.text:
         return response.text.strip()
-
+    
     textos = []
     if hasattr(response, "candidates"):
         for candidate in response.candidates:
@@ -31,157 +37,138 @@ def extrair_texto(response):
                 for part in content.parts:
                     if hasattr(part, "text") and part.text:
                         textos.append(part.text)
-
     return "\n".join(textos).strip()
 
-# =========================
-# FUNÇÃO PRINCIPAL
-# =========================
-
 def gerar_material(curriculo, contexto, descricao_vaga):
-    # -------------------------
-    # NORMALIZA INPUT
-    # -------------------------
+    """Envia os dados ao Gemini e processa o retorno."""
     def normalizar(texto, fallback):
         texto = (texto or "").strip()
         if not texto or "cole aqui" in texto.lower():
             return fallback
         return texto
 
-    curriculo = normalizar(
-        curriculo,
-        "Profissional de TI com experiência em desenvolvimento de software, atuação em projetos variados e foco em boas práticas."
-    )
+    curriculo = normalizar(curriculo, "Profissional de TI com experiência geral.")
+    contexto = normalizar(contexto, "Busca de novas oportunidades.")
+    descricao_vaga = normalizar(descricao_vaga, "Vaga na área de tecnologia.")
 
-    contexto = normalizar(
-        contexto,
-        "Profissional em busca de oportunidades alinhadas ao seu perfil técnico e crescimento profissional."
-    )
-
-    descricao_vaga = normalizar(
-        descricao_vaga,
-        "Vaga na área de tecnologia da informação com foco em desenvolvimento, manutenção de sistemas e colaboração em equipe."
-    )
-
-    # -------------------------
-    # PROMPT
-    # -------------------------
     prompt = f"""
-Você é um especialista em recrutamento, RH estratégico e copywriting profissional, com ampla experiência em análise de currículos e adequação a vagas de tecnologia.
+Você é um especialista em recrutamento e RH. Analise as informações e gere conteúdos claros.
+IMPORTANTE: Não invente dados, não use markdown, e retorne apenas no formato solicitado.
 
-Analise as informações abaixo e gere conteúdos profissionais, claros e objetivos.
+CURRÍCULO: {curriculo}
+CONTEXTO: {contexto}
+VAGA: {descricao_vaga}
 
-IMPORTANTE:
-- Evite linguagem padrão de IAs, como traços e palavras reutilzadas.
-- Não inventar e não retornar: experiencias profissionais, formação acadêmica, idiomas.
-- Não responder em markdown.
-- Nenhuma seção pode ficar vazia.
-- Caso alguma informação esteja genérica, crie um conteúdo profissional coerente.
-- Não explique o processo.
-- Retorne APENAS no formato solicitado.
-
-CURRÍCULO DO CANDIDATO:
-{curriculo}
-
-CONTEXTO PROFISSIONAL:
-{contexto}
-
-DESCRIÇÃO DA VAGA:
-{descricao_vaga}
-
-FORMATO DE RESPOSTA OBRIGATÓRIO:
-
+FORMATO OBRIGATÓRIO:
 --- PRETENSÃO SALARIAL ---
-(informe uma pretensão salarial compatível com o perfil e a vaga)
-
 --- CURRÍCULO ADAPTADO ---
-(currículo completo adaptado à vaga)
-
 --- POR QUE ME ESCOLHER PARA A VAGA ---
-(texto persuasivo e profissional)
 """
 
     response = client.models.generate_content(
-        model="gemini-3-flash-preview",
+        model="gemini-3-flash-preview", # Versão estável e rápida
         contents=prompt,
     )
 
     texto_resposta = extrair_texto(response)
-
     if not texto_resposta:
-        raise RuntimeError("Resposta vazia do Gemini após extração.")
-
-    # -------------------------
-    # EXTRAÇÃO DAS SEÇÕES
-    # -------------------------
-    def extrair_secao(titulo):
-        padrao = rf"--- {titulo} ---\s*(.*?)(?=\n---|\Z)"
-        match = re.search(padrao, texto_resposta, re.DOTALL | re.IGNORECASE)
-        if not match or not match.group(1).strip():
-            raise RuntimeError(f"Seção '{titulo}' não retornada corretamente.")
-        return match.group(1).strip()
-
-    return {
-        "pretensao_salarial": extrair_secao("PRETENSÃO SALARIAL"),
-        "curriculo_adaptado": extrair_secao("CURRÍCULO ADAPTADO"),
-        "porque_escolher": extrair_secao("POR QUE ME ESCOLHER PARA A VAGA"),
-        "texto_completo": texto_resposta
-    }
+        raise RuntimeError("Resposta vazia do Gemini.")
+    
+    return texto_resposta
 
 # =========================
-# INTERFACE GRÁFICA
+# INTERFACE GRÁFICA (GUI)
 # =========================
 
-def abrir_interface():
-    def gerar():
+class AppATS:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Reverse ATS - Otimizador de Currículo")
+        self.root.geometry("900x850")
+        
+        self.setup_ui()
+
+    def setup_ui(self):
+        # Estilo de labels
+        lbl_style = {"font": ("Arial", 10, "bold"), "anchor": "w", "padx": 10}
+        
+        tk.Label(self.root, text="Currículo Atual", **lbl_style).pack(fill="x")
+        self.txt_curriculo = scrolledtext.ScrolledText(self.root, height=8)
+        self.txt_curriculo.pack(fill="both", padx=10, pady=5)
+
+        tk.Label(self.root, text="Contexto Profissional", **lbl_style).pack(fill="x")
+        self.txt_contexto = scrolledtext.ScrolledText(self.root, height=4)
+        self.txt_contexto.pack(fill="both", padx=10, pady=5)
+
+        tk.Label(self.root, text="Descrição da Vaga", **lbl_style).pack(fill="x")
+        self.txt_descricao = scrolledtext.ScrolledText(self.root, height=6)
+        self.txt_descricao.pack(fill="both", padx=10, pady=5)
+
+        # Frame de Botões
+        frame_botoes = tk.Frame(self.root)
+        frame_botoes.pack(pady=10)
+
+        self.btn_gerar = tk.Button(
+            frame_botoes, text="🚀 Gerar Material", command=self.iniciar_geracao,
+            bg="#2b7cff", fg="white", font=("Arial", 10, "bold"), width=20
+        )
+        self.btn_gerar.pack(side="left", padx=5)
+
+        tk.Button(
+            frame_botoes, text="🗑️ Limpar Campos", command=self.limpar_campos,
+            bg="#f44336", fg="white", width=15
+        ).pack(side="left", padx=5)
+
+        tk.Label(self.root, text="Resultado Gerado", **lbl_style).pack(fill="x")
+        self.txt_saida = scrolledtext.ScrolledText(self.root, height=15, bg="#f9f9f9")
+        self.txt_saida.pack(fill="both", expand=True, padx=10, pady=5)
+
+        tk.Button(
+            self.root, text="📋 Copiar Resultado", command=self.copiar_texto,
+            bg="#4CAF50", fg="white"
+        ).pack(pady=5)
+
+    def limpar_campos(self):
+        self.txt_curriculo.delete("1.0", tk.END)
+        self.txt_contexto.delete("1.0", tk.END)
+        self.txt_descricao.delete("1.0", tk.END)
+        self.txt_saida.delete("1.0", tk.END)
+
+    def copiar_texto(self):
+        conteudo = self.txt_saida.get("1.0", tk.END).strip()
+        if conteudo:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(conteudo)
+            messagebox.showinfo("Sucesso", "Texto copiado para a área de transferência!")
+
+    def iniciar_geracao(self):
+        """Inicia o processamento em uma thread separada para não travar a UI."""
+        self.btn_gerar.config(state="disabled", text="⏳ Processando...")
+        
+        curriculo = self.txt_curriculo.get("1.0", tk.END)
+        contexto = self.txt_contexto.get("1.0", tk.END)
+        descricao = self.txt_descricao.get("1.0", tk.END)
+
+        thread = threading.Thread(target=self.processar, args=(curriculo, contexto, descricao))
+        thread.start()
+
+    def processar(self, curriculo, contexto, descricao):
         try:
-            curriculo = txt_curriculo.get("1.0", tk.END)
-            contexto = txt_contexto.get("1.0", tk.END)
-            descricao = txt_descricao.get("1.0", tk.END)
-
             resultado = gerar_material(curriculo, contexto, descricao)
-
-            txt_saida.delete("1.0", tk.END)
-            txt_saida.insert(tk.END, resultado["texto_completo"])
-
+            self.root.after(0, lambda: self.finalizar_sucesso(resultado))
         except Exception as e:
-            messagebox.showerror("Erro", str(e))
+            self.root.after(0, lambda: self.finalizar_erro(str(e)))
 
-    root = tk.Tk()
-    root.title("Gerador de Material Profissional")
-    root.geometry("900x800")
+    def finalizar_sucesso(self, resultado):
+        self.txt_saida.delete("1.0", tk.END)
+        self.txt_saida.insert(tk.END, resultado)
+        self.btn_gerar.config(state="normal", text="🚀 Gerar Material")
 
-    tk.Label(root, text="Currículo", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
-    txt_curriculo = ScrolledText(root, height=8)
-    txt_curriculo.pack(fill="both", padx=10, pady=5)
-
-    tk.Label(root, text="Contexto Profissional", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
-    txt_contexto = ScrolledText(root, height=5)
-    txt_contexto.pack(fill="both", padx=10, pady=5)
-
-    tk.Label(root, text="Descrição da Vaga", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
-    txt_descricao = ScrolledText(root, height=6)
-    txt_descricao.pack(fill="both", padx=10, pady=5)
-
-    tk.Button(
-        root,
-        text="Gerar Material",
-        command=gerar,
-        bg="#2b7cff",
-        fg="white",
-        font=("Arial", 10, "bold"),
-        height=2
-    ).pack(pady=10)
-
-    tk.Label(root, text="Resultado", font=("Arial", 10, "bold")).pack(anchor="w", padx=10)
-    txt_saida = ScrolledText(root, height=15)
-    txt_saida.pack(fill="both", expand=True, padx=10, pady=5)
-
-    root.mainloop()
-
-# =========================
-# MAIN
-# =========================
+    def finalizar_erro(self, erro):
+        messagebox.showerror("Erro", erro)
+        self.btn_gerar.config(state="normal", text="🚀 Gerar Material")
 
 if __name__ == "__main__":
-    abrir_interface()
+    root = tk.Tk()
+    app = AppATS(root)
+    root.mainloop()
