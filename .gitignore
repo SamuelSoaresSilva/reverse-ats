@@ -1,2 +1,4 @@
 .env
 reverse-ats.py
+*.docx
+__pycache__
